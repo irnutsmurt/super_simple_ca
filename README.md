@@ -1,4 +1,4 @@
-# Super Simple CA - Certificate Authority Management Script
+# Super Simple CA - Certificate Authority Management Script v0.1.0
 
 `super_simple_ca.py` is a Python script designed to simplify the process of managing a Certificate Authority (CA). It provides an easy-to-use interface for initializing a CA, creating certificates, revoking certificates, and how to install the root certificate on your system. The script supports both interactive menu-driven usage and command-line operations for power users.
 
