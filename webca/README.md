@@ -1,8 +1,8 @@
-# SuperSimpleCA — Web UI
+# SuperSimpleCA, Web UI
 
 A browser front-end for your existing OpenSSL homelab CA. It replaces the
 menu-driven `super_simple_ca.py` script with a web dashboard for issuing,
-renewing, revoking and downloading certificates — and it works with a
+renewing, revoking and downloading certificates, and it works with a
 **passphrase-protected CA key** (the passphrase is entered in the browser and
 held only in server memory for the session, never written to disk).
 
@@ -31,40 +31,40 @@ Then browse to `http://<host>:8443/`.
 
 ## Security model
 
-- **Web login** — single admin password (hashed with Werkzeug/PBKDF2, stored in
+- **Web login**: single admin password (hashed with Werkzeug/PBKDF2, stored in
   `config.yaml`). Set/reset it with `setup.py`.
-- **LAN-only** — external/public source IPs are always refused. Optionally list
+- **LAN-only**: external/public source IPs are always refused. Optionally list
   specific private IPs or CIDR ranges in `ip_allowlist`; non-private entries are
   ignored with a warning. `remote_addr` is used directly (no `X-Forwarded-For`
-  trust) — run without a reverse proxy, or add proxy handling before trusting it.
-- **CA passphrase** — when the CA key is encrypted, signing/revoking/renewing
+  trust), run without a reverse proxy, or add proxy handling before trusting it.
+- **CA passphrase**: when the CA key is encrypted, signing/revoking/renewing
   require an in-browser *unlock*. The passphrase lives in a per-process,
   in-memory vault keyed by a random session token; it never touches disk or the
   cookie and expires after `ca_unlock_timeout_minutes` of idle time. Because the
   vault is in-process, run a **single worker** (the built-in `app.py` uses
-  `threaded=True`, one process — don't put it behind multi-process gunicorn
+  `threaded=True`, one process, don't put it behind multi-process gunicorn
   without moving the vault to a shared store).
-- **Restart behavior** — Settings → *When the service restarts* (config
+- **Restart behavior**: Settings → *When the service restarts* (config
   `on_restart`) controls what happens to the CA unlock across a restart:
   `relogin` (default) invalidates sessions so signing in again re-unlocks the CA;
   `keep` leaves you signed in to re-unlock when needed; `persist` keeps the CA
   unlocked with no interaction by storing the passphrase at rest under a
-  machine-local key in `instance/persist.key` (least secure — anyone who can read
+  machine-local key in `instance/persist.key` (least secure, anyone who can read
   the app's files can recover it). Changing/removing the CA passphrase clears the
   persisted copy.
-- **CA auto-unlock (optional)** — Settings → *CA auto-unlock* lets you store the
+- **CA auto-unlock (optional)**: Settings → *CA auto-unlock* lets you store the
   CA passphrase encrypted with a key derived (scrypt) from your **login
   password**, so signing in unlocks the CA automatically and you never retype it.
   Only the wrapped blob + a random salt are stored (in `certificates.db`); they
   are useless without the login password, which is never stored in cleartext.
-  The tradeoff: security now rests on login-password strength — a stolen DB/backup
+  The tradeoff: security now rests on login-password strength, a stolen DB/backup
   could be brute-forced offline if that password is weak, so **use a strong one**.
   Changing the login password re-wraps automatically; changing/removing the CA
   passphrase disables auto-unlock (re-enable it afterwards). This is strictly
   better than storing the passphrase in plaintext, which is intentionally *not*
   offered.
-- **HTTPS** — Settings → *Web-UI TLS* offers three modes: **http**, **manual**
-  (`tls_cert`/`tls_key` files you provide and renew), or **SSCA-managed** — the CA
+- **HTTPS**: Settings → *Web-UI TLS* offers three modes: **http**, **manual**
+  (`tls_cert`/`tls_key` files you provide and renew), or **SSCA-managed**: the CA
   issues a cert for its own endpoint and **auto-renews** it (writing
   `instance/web.crt`/`web.key` and restarting itself to reload). Managed mode is the
   clean way to serve the UI over HTTPS *and* to expose the ACME directory over TLS
@@ -90,7 +90,7 @@ progress bar so long actions (key generation, signing) give visible feedback.
 - **Delete** removes it from the app: the row is dropped and tombstoned (so the
   self-healing reconcile won't re-add it) and the on-disk key/CSR/cert files move
   to `certs/revokedcerts/`. It does **not** rewrite `index.txt` (the CA ledger),
-  and it does **not** revoke — a still-valid cert stays trusted until you revoke it.
+  and it does **not** revoke, a still-valid cert stays trusted until you revoke it.
 - **Auto-delete** (Settings → Maintenance → Archived certificates) deletes archived
   certs after a configurable number of days.
 - **Renew** is available on expired certs too (it re-issues and archives the old
@@ -99,16 +99,16 @@ progress bar so long actions (key generation, signing) give visible feedback.
 ## ACME server (RFC 8555)
 
 SuperSimpleCA can act as an ACME certificate authority, so clients like **Caddy**,
-Traefik, certbot or acme.sh request and **auto-renew** certificates from it — no
+Traefik, certbot or acme.sh request and **auto-renew** certificates from it, no
 manual issuing. Phase 1 supports the **http-01** challenge for non-wildcard names.
 
 **Enable it** in Settings → ACME (or `config.yaml`):
 - `enabled: true`
-- `external_url` — the HTTPS address clients use, e.g. `https://ca.example.com`
-- `allowed_domains` — restrict issuance (e.g. `["example.com"]`); empty = any
+- `external_url`, the HTTPS address clients use, e.g. `https://ca.example.com`
+- `allowed_domains`, restrict issuance (e.g. `["example.com"]`); empty = any
 - `validity_days` / `max_validity_days`, `http01_port` (80), `manage_in_ui`
 
-**Prerequisite — unattended signing.** ACME issues without a human, so the CA key
+**Prerequisite, unattended signing.** ACME issues without a human, so the CA key
 must be usable unattended: either **unencrypted**, or with **“keep unlocked across
 restarts”** enabled (Settings → CA key). A locked CA returns a clear error and
 issuance fails.
@@ -136,7 +136,7 @@ still revoke/archive/delete them here).
 
 Directory: `https://<external_url>/acme/directory`.
 
-> **Important — don't route ACME through the same Caddy that depends on it.**
+> **Important, don't route ACME through the same Caddy that depends on it.**
 > If this CA's web UI is itself reverse-proxied by the Caddy that enrols against it
 > (e.g. `acme_ca https://ca.example.com/...` where `ca.example.com` is a Caddy site),
 > you create a bootstrap loop: Caddy needs to reach the CA to renew certs, but
@@ -153,7 +153,7 @@ Directory: `https://<external_url>/acme/directory`.
 > }
 > ```
 > and in Settings → ACME set `external_url` to `http://192.168.1.10:8081`. Plain HTTP
-> on a trusted LAN is fine here — ACME messages are JWS-signed, so integrity and
+> on a trusted LAN is fine here, ACME messages are JWS-signed, so integrity and
 > authentication don't depend on TLS. You can still keep a nice `ca.example.com`
 > vhost for *browser* access to the dashboard; only the machine-to-machine ACME
 > endpoint needs the direct address.
@@ -161,8 +161,8 @@ Directory: `https://<external_url>/acme/directory`.
 **Restricting who can enrol (EAB).** By default any client that can reach the ACME
 endpoint (subject to the IP allowlist and `allowed_domains`) can obtain certs. To
 require a per-client credential, enable **External Account Binding** (Settings →
-ACME → *Require External Account Binding*). Generate a credential there — you get a
-**key ID** and **MAC key** — and paste it into the client. Revoke it to cut that
+ACME → *Require External Account Binding*). Generate a credential there, you get a
+**key ID** and **MAC key**: and paste it into the client. Revoke it to cut that
 client off (already-issued certs keep working until they expire). In Caddy:
 
 ```caddy
@@ -176,7 +176,7 @@ client off (already-issued certs keep working until they expire). In Caddy:
 ```
 
 EAB gates *who may request* certificates; it does not change the CA-key-at-rest
-requirement (the CA still signs unattended — unencrypted or persist mode).
+requirement (the CA still signs unattended, unencrypted or persist mode).
 
 ## Unattended maintenance (tick.py)
 
@@ -189,7 +189,7 @@ when the dashboard is loaded. `tick.py` runs the same upkeep unattended:
 
 `install.sh` installs a systemd timer (`<service>-tick.timer`, every ~6h) that
 runs it as the service account. The CRL is regenerated automatically only when it
-can sign without a human — an unencrypted CA key, or the "persist across restart"
+can sign without a human, an unencrypted CA key, or the "persist across restart"
 passphrase; otherwise `tick.py` raises a notification to unlock and regenerate.
 The **CA** tab shows the root cert's validity/fingerprint and CRL freshness.
 
@@ -220,7 +220,7 @@ no-login system account:
 
 ```bash
 sudo ./install.sh            # create account, venv, fix ownership, install unit
-# or run setup.py first — it offers to run install.sh for you when done.
+# or run setup.py first, it offers to run install.sh for you when done.
 sudo ./install.sh uninstall  # stop, disable and remove the service
 ```
 
@@ -233,7 +233,7 @@ permissions, and writes `/etc/systemd/system/supersimpleca.service`. Override wi
 **TLS via Caddy.** Set `host: 127.0.0.1` in `config.yaml` and let Caddy terminate
 HTTPS and reverse-proxy to it. **Important:** behind a proxy the app sees every
 request as coming from `127.0.0.1`, so its `ip_allowlist` can't identify real
-clients — do LAN/IP restriction in Caddy instead:
+clients, do LAN/IP restriction in Caddy instead:
 
 ```caddy
 ca.example.lan {
@@ -276,7 +276,7 @@ signed copy `certs/<serial>.pem`, parsed for dates/SANs/type, and matched to its
 private key across the naming conventions this CA has used (`<cn>.key`,
 `<cn>.key.pem`). Entries whose expiry has passed are shown as **expired** (not
 lumped in with valid). If a valid cert's private key can't be found on disk, it
-still lists/views/revokes/renews — only the key download is unavailable.
+still lists/views/revokes/renews, only the key download is unavailable.
 
 To rebuild the mirror later (e.g. after CLI changes), use **Settings → Re-sync**
 or re-run `migrate_to_sqlite.py`. Both take a fresh backup first.
