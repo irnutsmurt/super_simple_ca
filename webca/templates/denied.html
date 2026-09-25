@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Access denied</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='sscafavicon.png') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body>
+<main>
+  <div class="card card-narrow" style="margin-top:4rem">
+    <h1>Access denied</h1>
+    <p class="muted">{{ reason }}</p>
+  </div>
+</main>
+</body></html>

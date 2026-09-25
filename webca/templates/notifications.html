@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Notifications · SuperSimpleCA{% endblock %}
+{% block content %}
+<div class="detail-head">
+  <h1>Notifications</h1>
+  <div class="downloads">
+    <form method="post" action="{{ url_for('notifications_read_all') }}" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn">Mark all read</button>
+    </form>
+    <form method="post" action="{{ url_for('notifications_clear') }}" class="inline"
+          onsubmit="return confirm('Delete all notifications?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-danger">Clear all</button>
+    </form>
+  </div>
+</div>
+
+{% if items %}
+<div class="notif-page">
+  {% for n in items %}
+  <div class="notif-row {{ 'unread' if not n.read }} sev-{{ n.severity }}">
+    <span class="notif-dot"></span>
+    <div class="notif-body">
+      <div class="notif-title">
+        {% if n.serial %}<a href="{{ url_for('cert_detail', serial=n.serial) }}">{{ n.title }}</a>
+        {% else %}{{ n.title }}{% endif %}
+      </div>
+      {% if n.body %}<div class="muted">{{ n.body }}</div>{% endif %}
+      <div class="notif-when muted">{{ n.created_at[:19].replace('T',' ') }} UTC</div>
+    </div>
+    {% if not n.read %}
+    <form method="post" action="{{ url_for('notification_read', nid=n.id) }}" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="linkbtn">mark read</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">No notifications.</p>
+{% endif %}
+{% endblock %}

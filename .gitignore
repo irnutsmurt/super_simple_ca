@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────
+# SuperSimpleCA — never publish operational CA data or secrets.
+# Only source code, templates, and *.example files should be tracked.
+# ─────────────────────────────────────────────────────────────
+
+# --- CA key material & issued certificates (CROWN JEWELS) ---
+ca/
+certs/
+crl/
+certs_archive.zip
+*.key.pem
+*.key
+*.p12
+*.pfx
+
+# --- CA database / issuance records ---
+db/
+logs/
+
+# --- Per-service SAN configs generated at runtime (keep openssl.cnf template) ---
+configs/*_san.cnf
+
+# --- Test fixtures containing real data ---
+test/ca/
+test/certs/
+test/crl/
+test/db/
+test/logs/
+test/configs/*_san.cnf
+
+# --- Web UI runtime state & secrets ---
+webca/.venv/
+webca/instance/
+webca/config.yaml
+
+# --- Backups / migration artifacts ---
+_migration_backup/
+*.bak
+*.old
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- Editor / OS noise ---
+.DS_Store
+*.swp

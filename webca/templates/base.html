@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SuperSimpleCA{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='sscafavicon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='sscafavicon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div id="progress-bar"></div>
+<header class="topbar">
+  <a class="brand" href="{{ url_for('dashboard') }}">🔐 SuperSimpleCA</a>
+  {% if session.get('logged_in') and ca_initialized %}
+  <nav>
+    <a href="{{ url_for('dashboard') }}">Certificates</a>
+    <a href="{{ url_for('issue') }}">Issue</a>
+    <a href="{{ url_for('publish_page') }}">Publish</a>
+    <a href="{{ url_for('ca_info') }}">CA</a>
+    <a href="{{ url_for('install_help') }}">Install CA</a>
+    <a href="{{ url_for('settings') }}">Settings</a>
+  </nav>
+  {% endif %}
+  <div class="topbar-right">
+    {% if session.get('logged_in') %}
+    <div class="bell-wrap" id="bell-wrap">
+      <button class="bell" id="bell-btn" aria-label="Notifications" title="Notifications">
+        🔔{% if notif_unread %}<span class="bell-badge" id="bell-badge">{{ notif_unread if notif_unread < 100 else '99+' }}</span>{% else %}<span class="bell-badge" id="bell-badge" hidden></span>{% endif %}
+      </button>
+      <div class="notif-dropdown" id="notif-dropdown" hidden>
+        <div class="notif-head">
+          <span>Notifications</span>
+          {% if notif_unread %}
+          <form method="post" action="{{ url_for('notifications_read_all') }}" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="linkbtn">mark all read</button>
+          </form>
+          {% endif %}
+        </div>
+        <div class="notif-list">
+          {% for n in notif_recent %}
+          <a class="notif-item {{ 'unread' if not n.read }} sev-{{ n.severity }}"
+             href="{{ url_for('cert_detail', serial=n.serial) if n.serial else url_for('notifications') }}">
+            <span class="notif-dot"></span>
+            <span class="notif-text"><strong>{{ n.title }}</strong>{% if n.body %}<br><small>{{ n.body }}</small>{% endif %}</span>
+          </a>
+          {% else %}
+          <div class="notif-empty">No notifications</div>
+          {% endfor %}
+        </div>
+        <a class="notif-all" href="{{ url_for('notifications') }}">View all</a>
+      </div>
+    </div>
+    {% endif %}
+    {% if ca_initialized and ca_encrypted %}
+      {% if ca_unlocked %}
+        <span class="pill pill-ok" title="CA passphrase held in memory for this session">CA unlocked</span>
+        <form method="post" action="{{ url_for('lock') }}" class="inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="linkbtn">lock</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('unlock') }}" class="pill pill-warn">CA locked</a>
+      {% endif %}
+    {% endif %}
+    {% if session.get('logged_in') %}
+      <a class="linkbtn" href="{{ url_for('logout') }}">logout</a>
+    {% endif %}
+  </div>
+</header>
+
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flashes">
+        {% for cat, msg in messages %}
+          <div class="flash flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="foot">SuperSimpleCA · homelab certificate authority</footer>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

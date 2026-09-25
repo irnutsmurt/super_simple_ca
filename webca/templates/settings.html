@@ -1,0 +1,749 @@
+{% extends "base.html" %}
+{% block title %}Settings · SuperSimpleCA{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="settings-layout">
+  <nav class="settings-tabs" aria-label="Settings sections">
+    <a href="#access" data-tab="access">Access &amp; login</a>
+    <a href="#server" data-tab="server">Server &amp; TLS</a>
+    <a href="#cakey" data-tab="cakey">CA key &amp; unlocking</a>
+    <a href="#notifications" data-tab="notifications">Notifications</a>
+    <a href="#acme" data-tab="acme">ACME</a>
+    <a href="#publish" data-tab="publish">Service publishing</a>
+    <a href="#maintenance" data-tab="maintenance">Maintenance &amp; files</a>
+  </nav>
+  <div class="settings-panels">
+
+<!-- ============================ ACCESS & LOGIN ============================ -->
+<section class="settings-group tab-panel" id="access">
+  <h2 class="group-title">Access &amp; login</h2>
+
+  <div class="card">
+    <h3>Web-UI login password</h3>
+    <p class="muted">The password you use to sign in to this web interface.</p>
+    <form method="post" action="{{ url_for('change_login_password') }}" class="stack" style="max-width:34rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Current password<input type="password" name="current" autocomplete="off"></label>
+      <label>New password<input type="password" name="new" autocomplete="new-password"></label>
+      <label>Confirm new<input type="password" name="new_confirm" autocomplete="new-password"></label>
+      <div><button class="btn btn-primary">Change login password</button></div>
+    </form>
+    {% if autounlock_enabled %}<p class="muted">Changing this automatically re-wraps the stored CA passphrase.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h3>LAN access allowlist</h3>
+    <p class="muted">Requests are always restricted to private/LAN addresses; external IPs are refused.
+      To narrow further, list specific IPs or CIDR ranges (one per line, or space/comma separated).
+      Leave it empty to allow <em>any</em> private address. Non-private or invalid entries are ignored.</p>
+    <form method="post" action="{{ url_for('change_allowlist') }}" class="stack" style="max-width:34rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Allowed IPs / CIDR ranges
+        <textarea name="ip_allowlist" rows="4" placeholder="192.168.1.0/24
+192.168.1.50
+10.0.0.0/8">{{ allowlist|join('\n') }}</textarea></label>
+      <div><button class="btn btn-primary">Save allowlist</button></div>
+    </form>
+    <p class="muted" style="margin-top:.4rem">Applies <strong>immediately</strong> (no restart). To prevent
+      lock-out, SSCA won't save a list that would block your current address (<code>{{ request.remote_addr }}</code>).
+      Empty = any private LAN address.</p>
+    {% if rejected %}
+      <div class="flash flash-error" style="margin-top:.5rem">Ignored invalid/non-private entries:
+        {% for e, why in rejected %}<div>{{ e }} — {{ why }}</div>{% endfor %}</div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ============================== SERVER & TLS ============================= -->
+<section class="settings-group tab-panel" id="server">
+  <h2 class="group-title">Server &amp; TLS</h2>
+
+  <div class="card">
+    <h3>Listen address &amp; port
+      <span class="pill pill-muted">{{ cfg.host or '0.0.0.0' }}:{{ cfg.port or 8443 }}</span></h3>
+    <p class="muted">Where this web UI binds. Change the port here (e.g. <code>8443</code>) instead of
+      editing <code>config.yaml</code>.</p>
+    <form method="post" action="{{ url_for('change_server') }}" class="stack" style="max-width:34rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-grid">
+        <label>Bind host
+          <input name="host" value="{{ cfg.host or '0.0.0.0' }}" placeholder="0.0.0.0">
+          <small class="muted"><code>0.0.0.0</code> = all interfaces; <code>127.0.0.1</code> = localhost only.</small></label>
+        <label>Port
+          <input type="number" name="port" min="1" max="65535" value="{{ cfg.port or 8443 }}"></label>
+      </div>
+      <div><button class="btn btn-primary">Save listen address</button></div>
+    </form>
+    <p class="muted" style="margin-top:.5rem">Takes effect on the next <strong>restart</strong>. If you change
+      the port, update Caddy's <code>acme_ca</code> and SSCA's ACME <em>External URL</em> to match, so both
+      sides agree on the address.</p>
+  </div>
+
+  <div class="card">
+    <h3>Web-UI TLS
+      <span class="pill {{ 'pill-ok' if web_tls.mode in ('manual','managed') else 'pill-muted' }}">
+        {{ web_tls.mode or 'http' }}</span></h3>
+    <p class="muted">How this web UI serves itself over HTTPS — and whether Caddy can use it as an ACME CA.</p>
+
+    <form method="post" action="{{ url_for('change_web_tls') }}" class="stack" style="max-width:42rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <label class="check"><input type="radio" name="mode" value="http" {{ 'checked' if (web_tls.mode or 'http') == 'http' }}>
+        <strong>HTTP only</strong></label>
+      <p class="opt-hint">Simplest — fine for browsing the dashboard on a trusted LAN. But
+        <strong>Caddy can't auto-renew (ACME) against a plain-HTTP CA</strong> — it requires the ACME
+        endpoint over HTTPS. Choose this only if you're <em>not</em> using Caddy/ACME with this CA.</p>
+
+      <label class="check"><input type="radio" name="mode" value="manual" {{ 'checked' if web_tls.mode == 'manual' }}>
+        <strong>Manual certificate</strong> — you provide it</label>
+      <p class="opt-hint">Serve HTTPS from your own <code>tls_cert</code>/<code>tls_key</code> files.
+        Works with Caddy/ACME, but <strong>you must re-issue and replace it before it expires</strong> — if it
+        lapses, the ACME endpoint goes down and every Caddy renewal breaks.</p>
+
+      <label class="check"><input type="radio" name="mode" value="managed" {{ 'checked' if web_tls.mode == 'managed' }}>
+        <strong>SSCA-managed (recommended for Caddy/ACME)</strong></label>
+      <p class="opt-hint">SSCA issues its own cert and <strong>auto-renews it forever</strong> — no manual cert,
+        no calendar reminders, no bootstrap loop. Point Caddy (and your DNS) <em>straight at SSCA</em> — by IP,
+        or a DNS record aimed at SSCA rather than through Caddy — and fill in those address(es) below.</p>
+
+      <label>Hostnames / IPs Caddy &amp; your browser use to reach SSCA <span class="muted">(managed mode)</span>
+        <input name="sans" value="{{ (web_tls.sans or [])|join(' ') }}"
+               placeholder="supersimpleca.example.com 192.168.1.10">
+        <small class="muted">The cert is only trusted for the exact names/IPs listed here. Add every address
+          you connect to SSCA by — e.g. the IP in Caddy's <code>acme_ca</code> and the hostname you browse.</small></label>
+      <div class="form-grid">
+        <label>Cert validity (days)
+          <input type="number" name="validity_days" min="1" value="{{ web_tls.validity_days or 825 }}"></label>
+        <label>Renew this many days before expiry
+          <input type="number" name="renew_before_days" min="1" value="{{ web_tls.renew_before_days or 30 }}"></label>
+      </div>
+      <div><button class="btn btn-primary">Save Web-UI TLS</button></div>
+    </form>
+    <p class="muted" style="margin-top:.5rem">Changing this <strong>takes effect on the next restart</strong>
+      (TLS is bound at startup). Managed mode needs the CA initialized and signable unattended
+      (unencrypted key or persist mode) — the same requirement as ACME.</p>
+  </div>
+</section>
+
+<!-- ========================= CA KEY & UNLOCKING ========================== -->
+<section class="settings-group tab-panel" id="cakey">
+  <h2 class="group-title">CA key &amp; unlocking</h2>
+
+  <!-- ===== Two-tier CA / offline root ===== -->
+  <div class="card">
+    <h3>Two-tier CA (offline root)
+      {% if two_tier.two_tier and not two_tier.root_key_present %}
+        <span class="pill pill-ok">root offline</span>
+      {% elif two_tier.two_tier %}
+        <span class="pill pill-warn">root still on server</span>
+      {% else %}
+        <span class="pill pill-muted">single-tier</span>
+      {% endif %}</h3>
+
+    {% if not two_tier.two_tier %}
+    <p class="muted">Right now your <strong>root</strong> key signs every certificate, so it has to
+      stay on this box unencrypted for unattended ACME. A two-tier setup fixes that: the root signs
+      one <strong>intermediate</strong>, the intermediate does all the day-to-day signing, and you
+      lock the root away offline. Clients keep trusting your existing root — nothing to reinstall.</p>
+    <form method="post" action="{{ url_for('two_tier_create') }}" class="stack" style="max-width:38rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Intermediate common name
+        <input name="cn" placeholder="Example Homelab Intermediate CA" required></label>
+      <label>Validity (days)
+        <input type="number" name="validity_days" min="1" max="7300" placeholder="1825" required
+               style="max-width:12rem">
+        <small class="muted">You choose — e.g. <code>1825</code> (5y). Rotate before your root expires.</small></label>
+      <label>Intermediate passphrase <span class="muted">(optional)</span>
+        <input type="password" name="int_passphrase" autocomplete="new-password" placeholder="blank = unattended">
+        <small class="muted">Leave blank so ACME can sign unattended. A passphrase here means every sign needs an unlock.</small></label>
+      <fieldset style="border:1px solid var(--line);border-radius:8px;padding:.7rem .8rem">
+        <legend class="muted" style="font-size:.8rem">Root key passphrase</legend>
+        {% if two_tier.root_encrypted %}
+        <label>Current root passphrase
+          <input type="password" name="root_current" autocomplete="off"></label>
+        <p class="muted" style="margin:.4rem 0 0">Your root is already encrypted. Enter its passphrase (leave the
+          new fields blank to keep it), so the root can sign the intermediate.</p>
+        {% endif %}
+        <div class="form-grid" style="margin-top:.4rem">
+          <label>{{ 'New root passphrase' if two_tier.root_encrypted else 'Set root passphrase' }}
+            <input type="password" name="root_new" autocomplete="new-password"></label>
+          <label>Confirm
+            <input type="password" name="root_new_confirm" autocomplete="new-password"></label>
+        </div>
+        <small class="muted">The root ends up encrypted with this — it's what makes taking it offline worthwhile.</small>
+      </fieldset>
+      <div><button class="btn btn-primary">Create intermediate &amp; switch signing</button></div>
+    </form>
+    {% elif two_tier.root_key_present %}
+    <p class="muted">Two-tier is active — the <strong>intermediate</strong> now signs all new certificates
+      {% if two_tier.intermediate and two_tier.intermediate.not_after %}
+        (valid until {{ two_tier.intermediate.not_after.strftime('%Y-%m-%d') }}){% endif %}.
+      The last step is to take the <strong>root key</strong> off this server so a break-in here can't reach it.</p>
+    <div class="reveal-box">
+      <div class="reveal-head">⚠️ Taking the root offline is irreversible</div>
+      <p class="muted" style="margin:.2rem 0 .6rem">Once the root private key leaves this box, SuperSimpleCA can't
+        get it back on its own. You'll only need it again to rotate/re-issue the intermediate. <strong>Store your
+        copy somewhere safe and offline — an encrypted USB drive in a drawer, not this machine.</strong> If you lose
+        it, you can keep issuing certs until the intermediate expires, but you can't make a new one.</p>
+
+      <p style="margin:.2rem 0 .2rem"><strong>Option A — move it yourself (recommended)</strong></p>
+      <p class="muted" style="margin:0 0 .5rem">Copy this file to your offline media, verify it, then delete it here:</p>
+      <div class="reveal-row"><span class="reveal-label">Root key</span>
+        <span class="copyfield"><code class="cf-val">{{ root_key_path }}</code>
+          <button type="button" class="cf-btn" data-copy-text="{{ root_key_path }}">Copy</button></span></div>
+
+      <p style="margin:.9rem 0 .2rem"><strong>Option B — let SuperSimpleCA export &amp; remove it</strong></p>
+      <p class="muted" style="margin:0 0 .5rem">Download the (encrypted) root key, save it offline, then confirm removal.</p>
+      <a class="btn btn-small" href="{{ url_for('two_tier_export_root') }}">Download encrypted root key</a>
+      <form method="post" action="{{ url_for('two_tier_remove_root') }}"
+            style="display:flex;gap:.4rem;align-items:center;margin-top:.5rem;flex-wrap:wrap"
+            onsubmit="return confirm('Delete the root private key from this server? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input name="confirm" placeholder="type REMOVE" autocomplete="off" style="max-width:11rem">
+        <button class="btn btn-small btn-danger">Remove root key from server</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="muted">✅ Root key is <strong>offline</strong>. The intermediate signs everything unattended
+      {% if two_tier.intermediate and two_tier.intermediate.not_after %}
+        (valid until {{ two_tier.intermediate.not_after.strftime('%Y-%m-%d') }}){% endif %}.
+      To rotate or re-issue the intermediate later, restore <code>{{ root_key_path }}</code> from your offline
+      copy, do it, then take the root offline again.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Signing-key passphrase</h3>
+    <p class="muted" style="margin-top:0">
+      {% if two_tier.two_tier %}
+        This is the passphrase on the <strong>intermediate</strong> — the key that signs certificates day-to-day.
+        Your <strong>root</strong> has its own passphrase (set when you created the intermediate above) and isn't
+        managed here.
+      {% else %}
+        This is the passphrase on the key that <strong>signs certificates</strong> — right now that's your
+        <strong>root</strong>, because there's no intermediate yet.
+      {% endif %}
+      <br><span class="muted">Not the same as <em>“Set root passphrase”</em> in the two-tier card above: that one
+      encrypts the root <em>and</em> hands signing to an unencrypted intermediate, so ACME keeps working unattended.
+      This card just adds/changes/removes a passphrase on whatever key signs today.</span>
+    </p>
+    {% if ca_encrypted %}
+      <p class="muted">It's currently passphrase-protected
+        <span class="pill {{ 'pill-ok' if ca_currently_unlocked else 'pill-warn' }}">
+          {{ 'unlocked now' if ca_currently_unlocked else 'locked' }}</span>.
+        Change or remove it below.</p>
+    {% elif two_tier.two_tier %}
+      <p class="muted">The intermediate has <strong>no passphrase</strong>, so ACME signs unattended. Add one only
+        if you want every sign to require a manual unlock.</p>
+    {% else %}
+      <p class="opt-hint" style="color:var(--warn)">⚠️ Your root has <strong>no passphrase</strong>. Adding one
+        <em>here</em> makes <strong>every sign need a manual unlock</strong> — your Caddy/Proxmox ACME renewals
+        would fail until someone unlocks the CA. If you want to protect the root <em>and</em> keep ACME
+        unattended, use <strong>Create intermediate</strong> above instead of this.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('change_ca_passphrase') }}" class="stack" style="max-width:34rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if ca_encrypted %}
+        <label>Current passphrase<input type="password" name="current" autocomplete="off"></label>
+      {% endif %}
+      <label>New passphrase<input type="password" name="new" autocomplete="new-password"></label>
+      <label>Confirm new<input type="password" name="new_confirm" autocomplete="new-password"></label>
+      <div>
+        <button class="btn btn-primary" name="action" value="set">
+          {{ 'Change passphrase' if ca_encrypted else 'Add passphrase' }}</button>
+        {% if ca_encrypted %}
+        <button class="btn btn-danger" name="action" value="remove"
+                onclick="return confirm('Remove the CA passphrase? The key will be stored unencrypted.');">
+          Remove passphrase</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>CA auto-unlock <span class="pill {{ 'pill-ok' if autounlock_enabled else 'pill-muted' }}">
+      {{ 'enabled' if autounlock_enabled else 'off' }}</span></h3>
+    {% if not ca_encrypted %}
+      <p class="muted">Your CA key has no passphrase, so there is nothing to auto-unlock.</p>
+    {% elif autounlock_enabled %}
+      <p class="muted">Signing in unlocks the CA automatically — you never type the CA passphrase.
+        The passphrase is stored encrypted with a key derived from your login password;
+        the stored blob is useless without that login password.</p>
+      <form method="post" action="{{ url_for('autounlock') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn-danger" name="action" value="disable"
+                onclick="return confirm('Disable auto-unlock? You will enter the CA passphrase each session again.');">
+          Disable auto-unlock</button>
+      </form>
+    {% else %}
+      <p class="muted">Enter your CA passphrase once here to enable one-password sign-in. It's
+        encrypted with a key derived from your web-UI login password and never stored in the
+        clear. Requires a strong login password (a stolen backup could otherwise be
+        brute-forced offline).</p>
+      <form method="post" action="{{ url_for('autounlock') }}" class="stack" style="max-width:34rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Your web-UI login password
+          <input type="password" name="login_password" autocomplete="off"></label>
+        <label>CA passphrase (the one you already use)
+          <input type="password" name="ca_passphrase" autocomplete="off"></label>
+        <div><button class="btn btn-primary" name="action" value="enable">Enable auto-unlock</button></div>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="card {{ 'is-disabled' if not ca_encrypted }}">
+    <h3>When the service restarts</h3>
+    {% if not ca_encrypted %}
+      <p class="muted"><strong>Not applicable</strong> — the signing key has no passphrase, so there's no
+        unlock to preserve across restarts. This becomes relevant once the key is passphrase-protected.</p>
+    {% endif %}
+    <p class="muted">The CA unlock lives in memory, so a restart clears it. Choose what should happen:</p>
+    <form method="post" action="{{ url_for('change_on_restart') }}" class="stack" style="max-width:46rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="radio">
+        <input type="radio" name="mode" value="relogin" {{ 'checked' if on_restart=='relogin' }}
+               {{ 'disabled' if not ca_encrypted }}>
+        <span><strong>Require sign-in again</strong> (recommended) — a restart signs you out; signing
+          back in re-unlocks the CA automatically if auto-unlock is on.</span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="mode" value="keep" {{ 'checked' if on_restart=='keep' }}
+               {{ 'disabled' if not ca_encrypted }}>
+        <span><strong>Stay signed in; unlock when needed</strong> — you keep your session, and
+          re-unlock the CA (with your login password) the next time you sign something.</span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="mode" value="persist" {{ 'checked' if on_restart=='persist' }}
+               {{ 'disabled' if not ca_encrypted }}>
+        <span><strong>Keep the CA unlocked across restarts</strong> — no interaction after a reboot.
+          <em>Less secure:</em> the CA passphrase is stored on this machine under a local key, so
+          anyone who can read the app's files could recover it.
+          {% if not ca_currently_unlocked %}<br><strong>Unlock the CA first</strong> to choose this.{% endif %}</span>
+      </label>
+      <div><button class="btn btn-primary" {{ 'disabled' if not ca_encrypted }}>Save</button></div>
+    </form>
+    {% if on_restart=='persist' %}
+      <p class="notice">The CA passphrase is currently stored on disk (machine-key wrapped) so it
+        survives restarts.</p>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ============================ NOTIFICATIONS ============================= -->
+<section class="settings-group tab-panel" id="notifications">
+  <h2 class="group-title">Notifications</h2>
+
+  <div class="card">
+    <h3>Expiry alerts &amp; sign-in warnings</h3>
+    <p class="muted">Certificates raise a notification when they get within this many days of
+      expiry. Individual certificates can override this on their detail page.</p>
+    <form method="post" action="{{ url_for('change_notifications') }}" class="stack" style="max-width:34rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Default notify lead time
+        <span class="inline-field"><input type="number" name="default_notify_days" min="0"
+          value="{{ default_notify_days }}" style="width:6rem"> days before expiry</span></label>
+      <label class="check"><input type="checkbox" name="login_alerts" {{ 'checked' if login_alerts }}>
+        Notify on failed sign-in attempts</label>
+      <div><button class="btn btn-primary">Save</button></div>
+    </form>
+  </div>
+</section>
+
+<!-- ================================ ACME ================================= -->
+<section class="settings-group tab-panel" id="acme">
+  <h2 class="group-title">ACME server (RFC 8555)</h2>
+
+  <div class="card">
+    <h3>Automatic certificate enrollment
+      <span class="pill {{ 'pill-ok' if acme_cfg.enabled else 'pill-muted' }}">
+        {{ 'enabled' if acme_cfg.enabled else 'off' }}</span></h3>
+    <p class="muted">Let clients like Caddy, Traefik, certbot or acme.sh request and auto-renew
+      certificates from this CA over the ACME protocol (http-01 challenge). Point them at
+      <code>{{ (acme_cfg.external_url or 'https://your-ca-host') }}/acme/directory</code>.</p>
+
+    {% if acme_cfg.enabled and not acme_signable %}
+    <div class="flash flash-error">The CA key is locked, so ACME issuance will fail. ACME needs to
+      sign unattended — use an unencrypted CA key, or enable
+      <a href="#cakey">“keep unlocked across restarts”</a>.</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('change_acme') }}" class="stack" style="max-width:40rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="check"><input type="checkbox" name="enabled" {{ 'checked' if acme_cfg.enabled }}>
+        Enable the ACME server</label>
+      <label>External URL (how clients reach this CA)
+        <input name="external_url" value="{{ acme_cfg.external_url or '' }}"
+               placeholder="https://ca.example.com"></label>
+      <div class="form-grid">
+        <label>Default validity (days)
+          <input type="number" name="validity_days" min="1" value="{{ acme_cfg.validity_days or 90 }}"></label>
+        <label>Max validity (days)
+          <input type="number" name="max_validity_days" min="1" value="{{ acme_cfg.max_validity_days or 397 }}"></label>
+        <label>Default http-01 port
+          <input type="number" id="acme-http01-port" name="http01_port" min="1"
+                 value="{{ acme_cfg.http01_port or 80 }}">
+          <small id="acme-http01-hint" class="muted" style="display:none">Not used while <em>Require EAB</em>
+            is on — each EAB credential sets its own http-01 port (see the list below).</small></label>
+      </div>
+      <label>Allowed domains (space/comma separated; blank = any)
+        <input name="allowed_domains" value="{{ (acme_cfg.allowed_domains or [])|join(' ') }}"
+               placeholder="example.com"></label>
+      <label class="check"><input type="checkbox" name="manage_in_ui" {{ 'checked' if acme_cfg.manage_in_ui }}>
+        Allow revoke/archive/delete of ACME-issued certificates from this web UI</label>
+      <label class="check"><input type="checkbox" id="acme-eab-required" name="eab_required" {{ 'checked' if acme_cfg.eab_required }}>
+        Require External Account Binding (EAB) — clients must present a credential to enroll</label>
+      <label class="check"><input type="checkbox" name="revoke_superseded" {{ 'checked' if acme_cfg.revoke_superseded }}>
+        Revoke the previous certificate when a client renews</label>
+      <p class="muted" style="margin:-.1rem 0 .3rem 1.6rem">Off by default (standard ACME lets the old cert expire
+        on its own). When on, a renewal — same account, same host(s) — revokes the cert it replaces, keeping the
+        list tidy. Matches on identical name sets, so a host with genuinely separate certs is unaffected.</p>
+      <div><button class="btn btn-primary">Save ACME settings</button></div>
+    </form>
+    <script>
+    (function(){
+      var cb=document.getElementById('acme-eab-required');
+      var port=document.getElementById('acme-http01-port');
+      var hint=document.getElementById('acme-http01-hint');
+      if(!cb||!port) return;
+      function sync(){
+        var on=cb.checked;
+        port.readOnly=on;
+        port.classList.toggle('input-disabled', on);
+        if(hint) hint.style.display = on ? 'block' : 'none';
+      }
+      cb.addEventListener('change', sync); sync();
+    })();
+    </script>
+    <p class="muted" style="margin-top:.6rem">Changing <em>enable</em> or the external URL takes effect
+      immediately. Serve the endpoint over HTTPS (e.g. via Caddy) with a cert clients trust.</p>
+  </div>
+
+  <!-- External Account Binding credentials -->
+  <div class="card">
+    <h3>External Account Binding (EAB)
+      <span class="pill {{ 'pill-ok' if acme_cfg.eab_required else 'pill-muted' }}">
+        {{ 'required' if acme_cfg.eab_required else 'optional' }}</span></h3>
+    <p class="muted">An EAB credential is a shared secret (a key ID + MAC key) a client must present
+      to register an ACME account — like an API key for enrollment. Issue one per client; revoke it
+      to cut that client off. When <em>Require EAB</em> is on, accounts can't be created without one.</p>
+
+    <form method="post" action="{{ url_for('acme_eab_new') }}" class="inline-form" style="margin-bottom:.4rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input name="label" placeholder="Label (e.g. caddy on synology)" style="max-width:20rem">
+      <input type="number" name="http01_port" min="1" max="65535" placeholder="http-01 port (blank = 80)" style="max-width:12rem">
+      <button class="btn btn-primary">Generate credential</button>
+    </form>
+    <p class="muted" style="margin:0 0 1rem">Set the <strong>http-01 port</strong> per client only if it
+      answers the challenge somewhere other than <strong>80</strong> (e.g. Caddy behind a host that hijacks
+      80 → <code>8031</code>; Proxmox answers on <code>80</code> so leave it blank). SSCA validates each
+      client's challenges on its own port.</p>
+
+    {% if eab_reveal %}
+    <div class="reveal-box">
+      <div class="reveal-head">🔑 Copy this now — the MAC key won't be shown again</div>
+      <p class="muted" style="margin:.2rem 0 .7rem">This is the only time SuperSimpleCA displays the MAC key
+        for <strong>{{ eab_reveal.label or eab_reveal.kid }}</strong>. Paste it into the client. If you lose it,
+        revoke this credential and generate a new one.</p>
+      <div class="reveal-row"><span class="reveal-label">Key ID</span>
+        <span class="copyfield"><code class="cf-val">{{ eab_reveal.kid }}</code>
+          <button type="button" class="cf-btn" data-copy-text="{{ eab_reveal.kid }}">Copy</button></span></div>
+      <div class="reveal-row"><span class="reveal-label">MAC key</span>
+        <span class="copyfield"><code class="cf-val">{{ eab_reveal.mac_key }}</code>
+          <button type="button" class="cf-btn" data-copy-text="{{ eab_reveal.mac_key }}">Copy</button></span></div>
+      <div class="reveal-row"><span class="reveal-label">Caddy block</span>
+        <span class="copyfield"><code class="cf-val">acme_eab &#123; key_id {{ eab_reveal.kid }} mac_key {{ eab_reveal.mac_key }} &#125;</code>
+          <button type="button" class="cf-btn" data-copy-text="acme_eab &#123; key_id {{ eab_reveal.kid }} mac_key {{ eab_reveal.mac_key }} &#125;">Copy</button></span></div>
+    </div>
+    {% endif %}
+
+    {% if eab_creds %}
+    <table class="data-table">
+      <thead><tr><th>Key ID</th><th>MAC key</th><th>Label</th><th>http-01 port</th><th>Status</th><th>Used by</th><th></th></tr></thead>
+      <tbody>
+      {% for e in eab_creds %}
+        <tr class="{{ 'muted' if e.status != 'active' }}">
+          <td><span class="copyfield"><code class="cf-val">{{ e.kid }}</code>
+            <button type="button" class="cf-btn" data-copy-text="{{ e.kid }}">Copy</button></span></td>
+          <td><span class="mac-hidden" title="Shown only once, when the credential is generated">•••••••• hidden</span></td>
+          <td>{{ e.label or '—' }}</td>
+          <td>
+            {% if e.status == 'active' %}
+            <form method="post" action="{{ url_for('acme_eab_port', kid=e.kid) }}"
+                  style="display:flex;gap:.25rem;align-items:center">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="number" name="http01_port" min="1" max="65535"
+                     value="{{ e.http01_port or '' }}" placeholder="80" style="width:5rem">
+              <button class="btn btn-small">Set</button>
+            </form>
+            {% else %}{{ e.http01_port or 80 }}{% endif %}
+          </td>
+          <td><span class="pill {{ 'pill-ok' if e.status == 'active' else 'pill-muted' }}">{{ e.status }}</span></td>
+          <td class="muted">{{ 'bound' if e.bound_account_id else 'unused' }}</td>
+          <td style="white-space:nowrap">
+            {% if e.status == 'active' %}
+            <form method="post" action="{{ url_for('acme_eab_revoke', kid=e.kid) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-small">Revoke</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('acme_eab_delete', kid=e.kid) }}" style="display:inline"
+                  onsubmit="return confirm('Delete EAB credential {{ e.kid }}?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-small btn-danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:.5rem">The MAC key is shown <strong>only once</strong>, right after you
+      generate the credential — copy it then. It isn't displayed again; if it's lost, revoke the credential and
+      generate a new one. Revoking stops new enrollments (already-issued certs keep working until they expire).</p>
+    {% else %}
+    <p class="muted">No EAB credentials yet. Generate one above, then paste the <code>key_id</code> and
+      <code>mac_key</code> into your client (Caddy: an <code>acme_eab</code> block).</p>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ========================= SERVICE PUBLISHING ========================= -->
+<section class="settings-group tab-panel" id="publish">
+  <h2 class="group-title">Service publishing (Pi-hole + Caddy)</h2>
+
+  <div class="card">
+    <h3>Auto-publish
+      <span class="pill {{ 'pill-ok' if publish_cfg.enabled else 'pill-muted' }}">
+        {{ 'enabled' if publish_cfg.enabled else 'off' }}</span>
+      {% if publish_cfg.enabled and not publish_ready %}
+      <span class="pill pill-warn">needs setup</span>{% endif %}</h3>
+    <p class="muted">One click on the <a href="{{ url_for('publish_page') }}">Publish</a> page creates a
+      Pi-hole DNS record and a Caddy reverse-proxy route, and Caddy then auto-enrolls a certificate
+      from this CA. Enter your Pi-hole (v6) and Caddy admin details here.</p>
+
+    <form method="post" action="{{ url_for('change_publish') }}" class="stack" style="max-width:42rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="check"><input type="checkbox" name="enabled" {{ 'checked' if publish_cfg.enabled }}>
+        Enable service publishing</label>
+      <div class="form-grid">
+        <label>Target IP
+          <input name="target_ip" value="{{ publish_cfg.target_ip or '' }}" placeholder="192.168.1.20">
+          <small class="muted">The host Caddy serves published services on.</small></label>
+        <label>Default domain suffix
+          <input name="domain" value="{{ publish_cfg.domain or '' }}" placeholder="example.com">
+          <small class="muted">Appended to service names, e.g. <code>app</code> → <code>app.example.com</code>.</small></label>
+      </div>
+      <h4 style="margin:.5rem 0 0">Caddy admin API</h4>
+      <div class="reveal-box" style="border-color:var(--warn);background:transparent">
+        <div class="reveal-head" style="color:var(--warn)">⚠️ Make Caddy keep published routes across restarts</div>
+        <p class="muted" style="margin:.2rem 0 .5rem">Publishing adds routes through Caddy's admin API. By default
+          Caddy re-reads its <strong>Caddyfile</strong> on restart and <strong>drops anything added via the API</strong>
+          — so your published services (and their certs) disappear until you re-publish. Run Caddy with
+          <code>--resume</code> so it reloads the last live config instead. First boot still seeds from the Caddyfile;
+          after that, the admin-API state (the autosave) wins.</p>
+        <p class="muted" style="margin:.2rem 0 .2rem"><strong>Docker / Compose</strong> — set the command and persist
+          the config dir (that's where <code>autosave.json</code> lives):</p>
+        <div class="reveal-row"><span class="reveal-label">command</span>
+          <span class="copyfield"><code class="cf-val">caddy run --config /etc/caddy/Caddyfile --resume</code>
+            <button type="button" class="cf-btn" data-copy-text="caddy run --config /etc/caddy/Caddyfile --resume">Copy</button></span></div>
+        <div class="reveal-row"><span class="reveal-label">volume</span>
+          <span class="copyfield"><code class="cf-val">caddy_config:/config</code>
+            <button type="button" class="cf-btn" data-copy-text="caddy_config:/config">Copy</button></span></div>
+        <p class="muted" style="margin:.5rem 0 .2rem"><strong>Non-container</strong> (systemd) — point
+          <code>ExecStart</code> at the same flags:</p>
+        <div class="reveal-row"><span class="reveal-label">ExecStart</span>
+          <span class="copyfield"><code class="cf-val">/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile --resume</code>
+            <button type="button" class="cf-btn" data-copy-text="/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile --resume">Copy</button></span></div>
+        <p class="muted" style="margin:.5rem 0 0"><strong>Heads-up:</strong> once an autosave exists, later
+          <em>Caddyfile edits are ignored</em>. To re-seed from the file, delete <code>autosave.json</code>
+          (in the config dir — containers: the <code>/config/caddy/</code> volume) and restart.</p>
+      </div>
+      <div class="form-grid">
+        <label>Caddy admin URL
+          <input name="caddy_admin_url" value="{{ (publish_cfg.caddy or {}).admin_url or '' }}"
+                 placeholder="http://192.168.1.20:2019">
+          <small class="muted">Caddy's admin API endpoint — usually port <code>:2019</code>.</small></label>
+        <label>Public HTTPS port
+          <input type="number" name="caddy_https_port" min="1"
+                 value="{{ (publish_cfg.caddy or {}).https_port or 443 }}">
+          <small class="muted">Port browsers use to reach published services — <code>443</code> normally,
+            or e.g. <code>8443</code> if Caddy sits behind a Docker/host port map.</small></label>
+      </div>
+      <div>
+        <button type="button" class="btn btn-small"
+          onclick="ssTest('{{ url_for('test_caddy_one') }}', {admin_url:this.form.caddy_admin_url.value, https_port:this.form.caddy_https_port.value}, this.nextElementSibling)">Test Caddy</button>
+        <span class="test-result"></span>
+      </div>
+      <div style="margin-top:.5rem"><button class="btn btn-primary">Save publishing settings</button></div>
+    </form>
+
+    <hr>
+    <h4>Pi-holes (v6)</h4>
+    <p class="muted">Add each Pi-hole (a primary + secondary, say) — the DNS record is written to
+      <em>all</em> of them. The app password is stored encrypted at rest; generate one in Pi-hole →
+      Settings → Web interface / API.</p>
+    {% if piholes_status %}
+    <table class="data-table" style="max-width:44rem">
+      <thead><tr><th>Base URL</th><th>Verify TLS</th><th>Password</th><th></th></tr></thead>
+      <tbody>
+      {% for url, verify, pw_set in piholes_status %}
+        <tr>
+          <td><code>{{ url }}</code></td>
+          <td>{{ 'yes' if verify else 'no' }}</td>
+          <td><span class="pill {{ 'pill-ok' if pw_set else 'pill-warn' }}">{{ 'stored' if pw_set else 'missing' }}</span></td>
+          <td style="white-space:nowrap">
+            <button type="button" class="btn btn-small"
+              onclick="ssTest('{{ url_for('test_pihole_one') }}', {base_url:'{{ url }}'}, this.parentNode.querySelector('.test-result'))">Test</button>
+            <form method="post" action="{{ url_for('remove_pihole') }}" style="display:inline"
+                  onsubmit="return confirm('Remove Pi-hole {{ url }}?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="base_url" value="{{ url }}">
+              <button class="btn btn-small btn-danger">Remove</button>
+            </form>
+            <div class="test-result" style="margin-top:.2rem"></div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No Pi-holes configured yet.</p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('add_pihole') }}" class="stack" style="max-width:42rem;margin-top:.75rem">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-grid">
+        <label>Pi-hole base URL
+          <input name="base_url" placeholder="https://192.168.1.10"></label>
+        <label>App password
+          <input type="password" name="password" placeholder="app password"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="verify_tls">
+        Verify TLS certificate (leave off for a self-signed LAN cert)</label>
+      <div>
+        <button class="btn">Add / update Pi-hole</button>
+        <button type="button" class="btn btn-small"
+          onclick="ssTest('{{ url_for('test_pihole_one') }}', {base_url:this.form.base_url.value, password:this.form.password.value, verify_tls:(this.form.verify_tls.checked?'on':'')}, this.parentNode.querySelector('.test-result'))">Test</button>
+        <span class="test-result"></span>
+      </div>
+      <p class="muted" style="margin:.3rem 0 0"><em>Test</em> checks reachability using what you've typed —
+        before you save.</p>
+    </form>
+
+    <p class="muted" style="margin-top:1rem">⚠️ SSCA will hold your Pi-hole credential and control
+      Caddy's admin API — keep the Caddy admin endpoint restricted to trusted hosts.</p>
+  </div>
+
+  <script>
+  (function(){
+    var CSRF = "{{ csrf_token }}";
+    window.ssTest = function(url, fields, out){
+      if(!out){ return; }
+      out.textContent = "Testing…"; out.style.color = "";
+      var body = new URLSearchParams();
+      Object.keys(fields).forEach(function(k){ body.append(k, fields[k] == null ? "" : fields[k]); });
+      fetch(url, {method:"POST", headers:{"X-CSRF-Token": CSRF}, body: body})
+        .then(function(r){ return r.json(); })
+        .then(function(d){ out.textContent = (d.ok ? "✓ " : "✗ ") + d.message;
+                           out.style.color = d.ok ? "#2e7d32" : "#c62828"; })
+        .catch(function(e){ out.textContent = "✗ Request failed: " + e; out.style.color = "#c62828"; });
+    };
+  })();
+  </script>
+  <style>
+    .test-result{margin-left:.5rem;font-size:.85em;white-space:normal}
+    .opt-hint{margin:.1rem 0 .8rem 1.7rem;font-size:.86em;line-height:1.4;opacity:.8}
+    .input-disabled{opacity:.5;background:rgba(127,127,127,.12);cursor:not-allowed}
+  </style>
+</section>
+
+<!-- ======================= MAINTENANCE & FILES =========================== -->
+<section class="settings-group tab-panel" id="maintenance">
+  <h2 class="group-title">Maintenance &amp; files</h2>
+
+  <div class="card">
+    <h3>Archived certificates</h3>
+    <p class="muted">Archiving hides a certificate from your lists without touching the CA. You can
+      have archived certificates deleted automatically after a while (their key/cert files move to
+      the revoked-certs folder; the CA ledger is left intact).</p>
+    <form method="post" action="{{ url_for('change_archive') }}" class="stack" style="max-width:34rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="check"><input type="checkbox" name="auto_delete" {{ 'checked' if archive_cfg.auto_delete }}>
+        Auto-delete archived certificates</label>
+      <label>Delete after
+        <span class="inline-field"><input type="number" name="delete_after_days" min="1"
+          value="{{ archive_cfg.delete_after_days or 90 }}" style="width:6rem"> days archived</span></label>
+      <div><button class="btn btn-primary">Save</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Database mirror</h3>
+    <p class="muted">Rebuild the SQLite mirror from OpenSSL's index.txt (takes a fresh backup first).
+      Use this if certs were changed outside the web UI.</p>
+    <form method="post" action="{{ url_for('resync') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn">Re-sync from index.txt</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>CA files</h3>
+    <div class="downloads">
+      <a class="btn" href="{{ url_for('ca_download', what='cert') }}">Root cert (PEM)</a>
+      <a class="btn" href="{{ url_for('ca_download', what='p7b') }}">Root cert (P7B)</a>
+      <a class="btn" href="{{ url_for('ca_download', what='crl') }}">CRL</a>
+    </div>
+  </div>
+</section>
+  </div><!-- .settings-panels -->
+</div><!-- .settings-layout -->
+
+<script>
+(function(){
+  var tabLinks = Array.prototype.slice.call(document.querySelectorAll('.settings-tabs a[data-tab]'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.settings-panels .tab-panel'));
+  if(!tabLinks.length || !panels.length) return;   // no JS enhancement → everything stacks
+  function show(id){
+    var found = false;
+    panels.forEach(function(p){ var on = (p.id === id); p.classList.toggle('active', on); if(on) found = true; });
+    tabLinks.forEach(function(t){ t.classList.toggle('active', t.getAttribute('data-tab') === id); });
+    return found;
+  }
+  function fromHash(){
+    var id = (location.hash || '').replace(/^#/, '');
+    if(!show(id)) show(tabLinks[0].getAttribute('data-tab'));
+  }
+  tabLinks.forEach(function(t){
+    t.addEventListener('click', function(e){
+      e.preventDefault();
+      var id = t.getAttribute('data-tab');
+      history.replaceState(null, '', '#' + id);
+      show(id);
+      window.scrollTo(0, 0);
+    });
+  });
+  window.addEventListener('hashchange', fromHash);
+  document.documentElement.classList.add('has-tabs');   // enable panel-hiding only when JS runs (fail-open)
+  fromHash();
+})();
+</script>
+<style>
+  .settings-layout{display:flex;gap:1.5rem;align-items:flex-start}
+  .settings-tabs{display:flex;flex-direction:column;gap:.15rem;flex:0 0 13rem;position:sticky;top:1rem}
+  .settings-tabs a{display:block;padding:.5rem .75rem;border-radius:6px;text-decoration:none;color:inherit;border-left:3px solid transparent}
+  .settings-tabs a:hover{background:rgba(127,127,127,.10)}
+  .settings-tabs a.active{background:rgba(127,127,127,.16);border-left-color:currentColor;font-weight:600}
+  .settings-panels{flex:1 1 auto;min-width:0}
+  .settings-panels .settings-group{margin-top:0}
+  .settings-panels .group-title{margin-top:0}
+  .has-tabs .settings-panels .tab-panel{display:none}
+  .has-tabs .settings-panels .tab-panel.active{display:block}
+  @media (max-width:760px){
+    .settings-layout{flex-direction:column}
+    .settings-tabs{flex-direction:row;flex-wrap:wrap;position:static;flex-basis:auto;gap:.25rem;margin-bottom:.5rem}
+    .settings-tabs a{border-left:none;border-bottom:3px solid transparent}
+    .settings-tabs a.active{border-left:none;border-bottom-color:currentColor}
+  }
+</style>
+{% endblock %}

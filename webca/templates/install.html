@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Install root CA · SuperSimpleCA{% endblock %}
+{% block content %}
+<h1>Install the root CA</h1>
+<p class="muted">Install the root certificate on your devices so they trust certificates issued
+  by this CA. Download it here:</p>
+<div class="downloads">
+  <a class="btn btn-primary" href="{{ url_for('ca_download', what='cert') }}">Download root cert (PEM)</a>
+  <a class="btn" href="{{ url_for('ca_download', what='p7b') }}">P7B</a>
+</div>
+
+<section class="card">
+  <h2>Linux (system trust) <button class="linkbtn" data-copy="#cmd-linux">copy</button></h2>
+  <pre id="cmd-linux">sudo cp ca.cert.pem /usr/local/share/ca-certificates/example-ca.crt
+sudo update-ca-certificates</pre>
+</section>
+<section class="card">
+  <h2>macOS <button class="linkbtn" data-copy="#cmd-macos">copy</button></h2>
+  <pre id="cmd-macos">sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain ca.cert.pem</pre>
+</section>
+<section class="card">
+  <h2>Windows (admin PowerShell) <button class="linkbtn" data-copy="#cmd-win">copy</button></h2>
+  <pre id="cmd-win">Import-Certificate -FilePath .\ca.cert.pem `
+  -CertStoreLocation Cert:\LocalMachine\Root</pre>
+</section>
+<section class="card">
+  <h2>Firefox</h2>
+  <p class="muted">Firefox uses its own store: Settings → Privacy &amp; Security → Certificates →
+    View Certificates → Authorities → Import, then trust it for websites.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Guided setup · SuperSimpleCA{% endblock %}
+{% block content %}
+<h1>Guided setup</h1>
+
+{% if step != "intro" %}
+<ol class="wiz-steps">
+  <li class="{{ 'done' if step != 'root' else 'now' }}">Root CA</li>
+  <li class="{{ 'done' if step == 'wrapup' else ('now' if step == 'intermediate' else '') }}">Intermediate</li>
+  <li class="{{ 'now' if step == 'wrapup' else '' }}">Offline root &amp; web cert</li>
+</ol>
+{% endif %}
+
+{# ------------------------------------------------------------------ intro #}
+{% if step == "intro" %}
+<div class="card">
+  <h2 style="margin-top:0">Want a hand setting this up?</h2>
+  <p class="muted">This walkthrough gets you to a secure setup in a few steps: create a
+    passphrase-protected <strong>root</strong>, put an <strong>intermediate</strong> underneath it to do the
+    day-to-day signing, take the root <strong>offline</strong>, and (optionally) issue SuperSimpleCA its own
+    HTTPS certificate. You can stop and do the rest by hand at any point.</p>
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.6rem">
+    <form method="post" action="{{ url_for('setup_start') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-primary">Walk me through it</button>
+    </form>
+    <form method="post" action="{{ url_for('setup_skip') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn">I'll do it myself</button>
+    </form>
+  </div>
+</div>
+
+{# ------------------------------------------------------------------ step 1: root #}
+{% elif step == "root" %}
+<div class="card">
+  <h2 style="margin-top:0">Step 1 — Create the root CA</h2>
+  <p class="muted">This is your trust anchor. The walkthrough protects it with a passphrase so you can take it
+    offline later. Clients will trust this root; certificates chain up to it.</p>
+  <form method="post" action="{{ url_for('setup_root') }}" class="stack" style="max-width:38rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>CA name (common name)
+      <input name="common_name" value="{{ d.common_name }}" placeholder="Example Homelab Root CA" required></label>
+    <div class="form-grid">
+      <label>Organization<input name="organization" value="{{ d.organization }}"></label>
+      <label>Org. unit<input name="organizational_unit" value="{{ d.organizational_unit }}"></label>
+      <label>Country<input name="country" value="{{ d.country }}"></label>
+      <label>State<input name="state" value="{{ d.state }}"></label>
+      <label>Locality<input name="locality" value="{{ d.locality }}"></label>
+      <label>Email<input name="email" value="{{ d.email }}"></label>
+    </div>
+    <fieldset style="border:1px solid var(--line);border-radius:8px;padding:.7rem .8rem">
+      <legend class="muted" style="font-size:.8rem">Root passphrase (required)</legend>
+      <div class="form-grid">
+        <label>Passphrase<input type="password" name="passphrase" autocomplete="new-password" required></label>
+        <label>Confirm<input type="password" name="passphrase_confirm" autocomplete="new-password" required></label>
+      </div>
+      <small class="muted">You'll need this once more to create the intermediate. Store it somewhere safe.</small>
+    </fieldset>
+    <div><button class="btn btn-primary">Create root CA</button></div>
+  </form>
+</div>
+
+{# ------------------------------------------------------------------ step 2: intermediate #}
+{% elif step == "intermediate" %}
+<div class="card">
+  <h2 style="margin-top:0">Step 2 — Create the intermediate</h2>
+  <p class="muted">The root signs one intermediate; from here on the <strong>intermediate</strong> signs every
+    certificate, so the root can go offline. Enter your root passphrase to authorize this.</p>
+  <form method="post" action="{{ url_for('setup_intermediate') }}" class="stack" style="max-width:38rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Intermediate common name
+      <input name="cn" placeholder="Example Homelab Intermediate CA" required></label>
+    <label>Validity (days)
+      <input type="number" name="validity_days" min="1" max="7300" placeholder="1825" required
+             style="max-width:12rem">
+      <small class="muted">You choose — e.g. <code>1825</code> (5y). Rotate before the root expires.</small></label>
+    <label>Root passphrase
+      <input type="password" name="root_passphrase" autocomplete="off" required
+             style="max-width:22rem">
+      <small class="muted">The one you just set for the root.</small></label>
+    <div><button class="btn btn-primary">Create intermediate</button></div>
+  </form>
+</div>
+
+{# ------------------------------------------------------------------ step 3: wrapup #}
+{% elif step == "wrapup" %}
+<div class="card">
+  <h2 style="margin-top:0">Step 3 — Take the root offline</h2>
+  {% if two_tier.root_key_present %}
+  <div class="reveal-box">
+    <div class="reveal-head">⚠️ This is irreversible</div>
+    <p class="muted" style="margin:.2rem 0 .6rem">Once the root private key leaves this box, SuperSimpleCA can't
+      get it back on its own. You'll only need it again to rotate the intermediate. <strong>If you lose your copy,
+      you can keep issuing certs until the intermediate expires, but you can't make a new one.</strong> Store it on
+      encrypted offline media (a USB drive in a drawer), not on this machine.</p>
+
+    <p style="margin:.2rem 0 .2rem"><strong>Option A — move it yourself</strong></p>
+    <p class="muted" style="margin:0 0 .5rem">Copy this file to offline media, verify it, then delete it here:</p>
+    <div class="reveal-row"><span class="reveal-label">Root key</span>
+      <span class="copyfield"><code class="cf-val">{{ root_key_path }}</code>
+        <button type="button" class="cf-btn" data-copy-text="{{ root_key_path }}">Copy</button></span></div>
+
+    <p style="margin:.9rem 0 .2rem"><strong>Option B — export &amp; remove it here</strong></p>
+    <p class="muted" style="margin:0 0 .5rem">Download the encrypted root key, save it offline, then confirm.</p>
+    <a class="btn btn-small" href="{{ url_for('two_tier_export_root') }}">Download encrypted root key</a>
+    <form method="post" action="{{ url_for('setup_remove_root') }}"
+          style="display:flex;gap:.4rem;align-items:center;margin-top:.5rem;flex-wrap:wrap"
+          onsubmit="return confirm('Delete the root private key from this server? This cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input name="confirm" placeholder="type REMOVE" autocomplete="off" style="max-width:11rem">
+      <button class="btn btn-small btn-danger">Remove root key from server</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="muted">✅ Root key is <strong>offline</strong>. The intermediate now signs everything unattended.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Step 4 — SuperSimpleCA's own HTTPS certificate <span class="muted">(optional)</span></h2>
+  {% if web_tls.mode == "managed" and web_tls.sans %}
+  <p class="muted">✅ Managed web certificate configured for
+    <strong>{{ web_tls.sans|join(', ') }}</strong>. Restart the service to serve HTTPS with it.</p>
+  {% else %}
+  <p class="muted">SuperSimpleCA can issue itself a certificate from your CA so this admin page is served over
+    HTTPS (no Caddy/ACME loop). Enter the address(es) you reach it by — this box is
+    <code>{{ listen }}</code>.</p>
+  <div class="reveal-box" style="border-color:var(--line);background:transparent">
+    <strong>Heads up on how you'll reach it:</strong>
+    <p class="muted" style="margin:.3rem 0 0">You can open it by <strong>IP</strong> right away, but for the
+      certificate to actually match the address in the bar you really want a <strong>DNS record</strong> — add an
+      A record on your <strong>Pi-hole or Unbound</strong> pointing a hostname (e.g.
+      <code>ca.example.com</code>) at this box, and include that hostname below. Certs don't validate against a
+      bare IP as cleanly as a name.</p>
+  </div>
+  <form method="post" action="{{ url_for('setup_webcert') }}" class="stack" style="max-width:38rem;margin-top:.6rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Hostname(s) / IP(s) SuperSimpleCA is reached by
+      <input name="sans" placeholder="ca.example.com 192.168.1.10" required>
+      <small class="muted">Space- or comma-separated. Put your DNS hostname first.</small></label>
+    <div><button class="btn btn-primary">Issue web certificate</button></div>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <p class="muted" style="margin:0 0 .6rem">Done here? You can always revisit any of this under
+    <strong>Settings</strong>.</p>
+  <form method="post" action="{{ url_for('setup_finish') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn btn-primary">Finish setup</button>
+  </form>
+</div>
+{% endif %}
+
+<style>
+.wiz-steps { list-style:none; display:flex; gap:.5rem; flex-wrap:wrap; padding:0; margin:0 0 1rem;
+  counter-reset:wz; }
+.wiz-steps li { counter-increment:wz; color:var(--muted); font-size:.85rem; font-weight:600;
+  padding:.3rem .7rem .3rem .6rem; border:1px solid var(--line); border-radius:999px; }
+.wiz-steps li::before { content:counter(wz); display:inline-flex; align-items:center; justify-content:center;
+  width:1.2rem; height:1.2rem; margin-right:.4rem; border-radius:999px; background:var(--exp-bg);
+  color:var(--muted); font-size:.72rem; }
+.wiz-steps li.now { color:var(--ink); border-color:var(--brand); }
+.wiz-steps li.now::before { background:var(--brand); color:var(--brand-ink); }
+.wiz-steps li.done { color:var(--ok); border-color:var(--ok); }
+.wiz-steps li.done::before { content:"✓"; background:var(--ok-bg); color:var(--ok); }
+</style>
+{% endblock %}

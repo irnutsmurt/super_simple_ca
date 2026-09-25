@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}CA health · SuperSimpleCA{% endblock %}
+{% block content %}
+<h1>Certificate Authority</h1>
+
+<div class="cols">
+  <section class="card">
+    <h2>Root certificate</h2>
+    <dl class="kv">
+      <dt>Subject</dt><dd class="mono">{{ ca.subject or '—' }}</dd>
+      <dt>Valid from</dt><dd>{{ ca.not_before.strftime('%Y-%m-%d') if ca.not_before else '—' }}</dd>
+      <dt>Expires</dt>
+      <dd>
+        {{ ca.not_after.strftime('%Y-%m-%d') if ca.not_after else '—' }}
+        {% if ca.days_left is not none %}
+          {% if ca.days_left < 0 %}<span class="hint hint-bad">expired</span>
+          {% elif ca.days_left <= ca_warn %}<span class="hint hint-bad">{{ ca.days_left }} days left</span>
+          {% else %}<span class="hint">{{ ca.days_left }} days left</span>{% endif %}
+        {% endif %}
+      </dd>
+      <dt>Key</dt><dd>{{ 'passphrase-protected' if ca.encrypted else 'no passphrase' }}</dd>
+      <dt>SHA-256</dt><dd class="mono" style="font-size:.78rem">{{ ca.fingerprint or '—' }}</dd>
+    </dl>
+    <div class="downloads">
+      <a class="btn" href="{{ url_for('ca_download', what='cert') }}">Root cert (PEM)</a>
+      <a class="btn" href="{{ url_for('ca_download', what='p7b') }}">P7B</a>
+      <a class="btn" href="{{ url_for('install_help') }}">Install instructions</a>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Revocation list (CRL)</h2>
+    {% if crl.exists and crl.next_update %}
+    <dl class="kv">
+      <dt>Next update</dt>
+      <dd>
+        {{ crl.next_update.strftime('%Y-%m-%d %H:%M') }} UTC
+        {% if crl.days_left is not none %}
+          {% if crl.days_left < 0 %}<span class="hint hint-bad">expired {{ -crl.days_left }}d ago</span>
+          {% elif crl.days_left <= crl_warn %}<span class="hint hint-bad">{{ crl.days_left }}d left</span>
+          {% else %}<span class="hint">{{ crl.days_left }}d left</span>{% endif %}
+        {% endif %}
+      </dd>
+    </dl>
+    {% if crl.days_left is not none and crl.days_left <= crl_warn %}
+    <p class="notice">The CRL is near or past its next-update time. Regenerate it so clients keep
+      accepting your certificates.</p>
+    {% endif %}
+    {% else %}
+    <p class="muted">No CRL has been generated yet.</p>
+    {% endif %}
+    <div class="downloads">
+      <a class="btn" href="{{ url_for('ca_download', what='crl') }}">Download CRL</a>
+      <form method="post" action="{{ url_for('crl_regen') }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn-primary">Regenerate CRL</button>
+      </form>
+    </div>
+    <p class="muted" style="margin-top:.6rem">Tip: run <code>tick.py</code> on a schedule so the CRL
+      is regenerated automatically before it lapses (see the README).</p>
+  </section>
+</div>
+{% endblock %}

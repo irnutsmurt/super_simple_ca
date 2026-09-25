@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Initialize CA · SuperSimpleCA{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Initialize Certificate Authority</h1>
+  <p class="muted">No CA was found. Create the root key and certificate to get started.</p>
+  <form method="post" class="stack form-grid">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Country<input name="country" value="{{ form.country or d.country }}"></label>
+    <label>State<input name="state" value="{{ form.state or d.state }}"></label>
+    <label>Locality<input name="locality" value="{{ form.locality or d.locality }}"></label>
+    <label>Organization<input name="organization" value="{{ form.organization or d.organization }}"></label>
+    <label>Org. Unit<input name="organizational_unit" value="{{ form.organizational_unit or d.organizational_unit }}"></label>
+    <label>Email<input name="email" value="{{ form.email or d.email }}"></label>
+    <label class="full">Common Name (CA name)
+      <input name="common_name" value="{{ form.common_name or d.common_name }}"></label>
+
+    <fieldset class="full">
+      <legend>CA key protection</legend>
+      <label class="check"><input type="checkbox" name="use_passphrase" checked> Protect the CA key with a passphrase (recommended)</label>
+      <div class="form-grid">
+        <label>Passphrase<input type="password" name="passphrase" autocomplete="new-password"></label>
+        <label>Confirm<input type="password" name="passphrase_confirm" autocomplete="new-password"></label>
+      </div>
+    </fieldset>
+
+    <div class="full">
+      <button class="btn btn-primary">Initialize CA</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

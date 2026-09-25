@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Publish a service · SuperSimpleCA{% endblock %}
+{% block content %}
+<h1>Publish a service</h1>
+<p class="muted" style="max-width:48rem">Create a Pi-hole DNS record and a Caddy reverse-proxy route in
+  one step; Caddy then auto-enrols a certificate from this CA. Configure Pi-hole &amp; Caddy under
+  <a href="{{ url_for('settings') }}#publish">Settings → Service publishing</a>.</p>
+
+{% if not publish_ready %}
+<div class="flash flash-error">Service publishing isn't fully configured yet.
+  <a href="{{ url_for('settings') }}#publish">Set up Pi-hole &amp; Caddy in Settings</a> and enable it.</div>
+{% endif %}
+
+<div class="card" style="max-width:48rem">
+  <h3>New service</h3>
+  <form id="publish-form" method="post" action="{{ url_for('publish_new') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <label>Service name
+        <input name="name" placeholder="autobrr" {{ 'disabled' if not publish_ready }}>
+        <small class="muted">Short name (→ <code>name.{{ publish_cfg.domain or 'your-domain' }}</code>)
+          or a full hostname.</small></label>
+      <label>Backend (host:port)
+        <input name="upstream" placeholder="192.168.1.30:7474" {{ 'disabled' if not publish_ready }}>
+        <small class="muted">Where Caddy reverse-proxies to.</small></label>
+    </div>
+    <label>DNS target IP
+      <input name="target_ip" value="{{ publish_cfg.target_ip or '' }}" {{ 'disabled' if not publish_ready }}>
+      <small class="muted">The Caddy box the hostname resolves to (defaults from Settings).</small></label>
+    <div><button type="submit" class="btn btn-primary" {{ 'disabled' if not publish_ready }}>Publish</button></div>
+  </form>
+</div>
+
+<div id="publish-steps" class="pub-steps" style="display:none"></div>
+
+<h2 style="margin-top:1.5rem">Published services</h2>
+{% if services %}
+<table class="data-table" style="max-width:60rem">
+  <thead><tr><th>Hostname</th><th>Backend</th><th>DNS</th><th>Route</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% set hp = (publish_cfg.caddy or {}).https_port or 443 %}
+  {% for s in services %}
+    <tr>
+      <td><a href="https://{{ s.hostname }}{% if hp not in (443, '443') %}:{{ hp }}{% endif %}" target="_blank" rel="noopener">{{ s.hostname }}</a></td>
+      <td><code>{{ s.upstream }}</code></td>
+      <td>{{ '✓' if s.dns_ok else '—' }}</td>
+      <td>{{ '✓' if s.route_ok else '—' }}</td>
+      <td>
+        <span class="pill {{ 'pill-ok' if s.status == 'published' else ('pill-warn' if s.status in ('pending','partial') else 'pill-muted') }}">{{ s.status }}</span>
+        {% if s.error %}<br><small class="muted" title="{{ s.error }}">{{ s.error|truncate(60) }}</small>{% endif %}
+      </td>
+      <td style="white-space:nowrap">
+        <form method="post" action="{{ url_for('publish_unpublish', hostname=s.hostname) }}"
+              class="unpub-form" data-host="{{ s.hostname }}"
+              data-stream="{{ url_for('unpublish_stream', hostname=s.hostname) }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-small btn-danger">Unpublish</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted" style="margin-top:.5rem">Certificates for these appear on the
+  <a href="{{ url_for('dashboard') }}">Certificates</a> list tagged <span class="tag tag-acme">ACME</span>
+  once Caddy enrols them (usually within a few seconds).</p>
+{% else %}
+<p class="muted">No services published yet.</p>
+{% endif %}
+
+<script>
+(function(){
+  var box = document.getElementById('publish-steps');
+  if(!box || !window.fetch || !window.ReadableStream) return;  // fall back to normal POST
+
+  function runStream(url, form){
+    var stepEls = {};
+    box.innerHTML = ''; box.style.display = 'block';
+    box.scrollIntoView({behavior:'smooth', block:'nearest'});
+    function render(ev){
+      var el = stepEls[ev.step];
+      if(!el){ el = document.createElement('div'); el.className = 'pub-step'; box.appendChild(el); stepEls[ev.step] = el; }
+      var icon = ev.status==='running' ? '⏳' : ev.status==='ok' ? '✅'
+               : ev.status==='warn' ? '⚠️' : ev.status==='error' ? '❌' : '•';
+      el.textContent = icon + '  ' + ev.message;
+      el.style.color = ev.status==='error' ? '#c62828' : ev.status==='warn' ? '#b26a00' : '';
+    }
+    function done(){
+      var f = document.createElement('div');
+      f.className = 'muted'; f.style.marginTop = '.5rem';
+      f.innerHTML = '<a href="{{ url_for('publish_page') }}">Refresh the list ↻</a>';
+      box.appendChild(f);
+    }
+    var btn = form.querySelector('button[type=submit]'); if(btn){ btn.disabled = true; }
+    var csrf = form.querySelector('[name=csrf_token]').value;
+    var body = new URLSearchParams(new FormData(form));
+    fetch(url, {method:'POST', headers:{'X-CSRF-Token':csrf}, body:body})
+      .then(function(resp){
+        if(!resp.ok || !resp.body){
+          return resp.json().then(function(d){ render({step:'e',status:'error',message:d.message||('HTTP '+resp.status)}); });
+        }
+        var reader = resp.body.getReader(), dec = new TextDecoder(), buf = '';
+        function pump(){
+          return reader.read().then(function(r){
+            if(r.done){ done(); return; }
+            buf += dec.decode(r.value, {stream:true});
+            var idx;
+            while((idx = buf.indexOf('\n')) >= 0){
+              var line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
+              if(line){ try { render(JSON.parse(line)); } catch(_){} }
+            }
+            return pump();
+          });
+        }
+        return pump();
+      })
+      .catch(function(err){ render({step:'e',status:'error',message:'Request failed: '+err}); if(btn){ btn.disabled=false; } });
+  }
+
+  var pf = document.getElementById('publish-form');
+  if(pf){ pf.addEventListener('submit', function(e){ e.preventDefault(); runStream("{{ url_for('publish_stream') }}", pf); }); }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.unpub-form'), function(f){
+    f.addEventListener('submit', function(e){
+      e.preventDefault();
+      if(!confirm('Unpublish ' + f.getAttribute('data-host') + '? This removes its DNS record and Caddy route, and revokes its certificate.')) return;
+      runStream(f.getAttribute('data-stream'), f);
+    });
+  });
+})();
+</script>
+<style>
+.pub-steps{margin:1rem 0;padding:.75rem 1rem;border:1px solid var(--border,#ddd);border-radius:6px;max-width:48rem}
+.pub-step{padding:.15rem 0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em;white-space:normal}
+</style>
+{% endblock %}

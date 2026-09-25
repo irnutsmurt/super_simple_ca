@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Sign in · SuperSimpleCA{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Sign in</h1>
+  {% if not configured %}
+    <p class="notice">No admin password is set yet. Run <code>python3 setup.py</code> on the
+      server to create one.</p>
+  {% endif %}
+  <form method="post" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Password
+      <input type="password" name="password" autofocus autocomplete="current-password">
+    </label>
+    <button class="btn btn-primary">Sign in</button>
+  </form>
+</div>
+{% endblock %}

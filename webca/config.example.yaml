@@ -1,0 +1,74 @@
+# SuperSimpleCA web UI configuration.
+# Copy to config.yaml (setup.py does this for you) and edit as needed.
+
+# Where the CA lives. Default is the parent directory of webca/ (your existing CA).
+# ca_root: /path/to/supersimpleca
+
+host: 0.0.0.0        # 0.0.0.0 = reachable on the LAN; 127.0.0.1 = local only
+port: 8443
+
+# Serve the UI over HTTPS (recommended). Point these at a cert/key the UI can read.
+# You can issue one from this very CA for the box's hostname.
+tls_cert: null       # e.g. /path/to/webui.crt
+tls_key: null        # e.g. /path/to/webui.key
+
+require_login: true                 # password login for the web UI
+session_timeout_minutes: 60         # web login idle timeout
+ca_unlock_timeout_minutes: 15       # how long the CA passphrase stays unlocked
+secure_cookies: false               # set true when served over HTTPS (e.g. behind Caddy)
+
+login_throttle:                     # lock an IP after repeated failed sign-ins
+  max_fails: 5
+  window_seconds: 300
+  lock_seconds: 300
+
+# What happens to the CA unlock when the service restarts (also settable in the
+# Settings UI):
+#   relogin — invalidate sessions; sign in again (auto-unlock re-unlocks the CA)
+#   keep    — stay signed in; unlock the CA when next needed
+#   persist — keep the CA unlocked across restarts (stores the passphrase at rest
+#             under a machine-local key in instance/ — least secure)
+on_restart: relogin
+
+# Restrict which LAN clients may reach the UI. Entries must be PRIVATE addresses
+# or CIDR ranges (public/external addresses are always refused, and non-private
+# entries here are ignored with a warning). Empty list = any private LAN address.
+ip_allowlist: []
+#  - 192.168.1.0/24
+#  - 192.168.1.50
+#  - 10.0.0.0/8
+
+notifications:
+  default_notify_days: 30   # default expiry-alert lead time (per-cert overrides on its page)
+  login_alerts: true        # notify on failed sign-in attempts
+  ca_expiry_warn_days: 60   # warn this many days before the root CA expires
+  crl_warn_days: 7          # regenerate/warn this many days before the CRL lapses
+
+archive:
+  auto_delete: false        # auto-delete archived certificates after a delay
+  delete_after_days: 90
+
+# ACME server (RFC 8555) — lets Caddy/certbot auto-enroll + renew.
+acme:
+  enabled: false
+  external_url: ""          # e.g. https://ca.example.com — REQUIRED to enable
+  validity_days: 90         # default issued-cert lifetime
+  max_validity_days: 397    # cap on client-requested lifetimes
+  allowed_domains: []       # e.g. ["example.com"]; empty = any (challenge still required)
+  http01_port: 80
+  order_ttl_hours: 24
+  manage_in_ui: true        # allow revoke/archive/delete of ACME certs from the web UI
+
+auth:
+  password_hash: null   # set by setup.py — do not edit by hand
+
+cert_defaults:
+  default_validity_days: 825
+  key_length: 4096
+  country: US
+  state: State
+  locality: City
+  organization: Example Homelab
+  organizational_unit: Homelab
+  common_name: Example Homelab CA
+  email: admin@example.com

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ c.common_name }} · SuperSimpleCA{% endblock %}
+{% block content %}
+<div class="detail-head">
+  <div>
+    <a class="linkbtn" href="{{ url_for('dashboard') }}">← back</a>
+    <h1>{{ c.common_name }}</h1>
+    <div class="meta">
+      {% if c.status=='valid' %}<span class="badge badge-ok">valid</span>
+      {% elif c.status=='revoked' %}<span class="badge badge-rev">revoked</span>
+      {% else %}<span class="badge badge-exp">expired</span>{% endif %}
+      {% if c.archived_at %}<span class="badge badge-arc">archived</span>{% endif %}
+      {% if c.source == 'acme' %}<span class="tag-acme">ACME</span>{% endif %}
+      <span class="mono">serial {{ c.serial }}</span> ·
+      <span>{{ c.cert_type }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="cols">
+  <section class="card">
+    <h2>Details</h2>
+    <dl class="kv">
+      <dt>Subject</dt><dd class="mono">{{ c.subject or '—' }}</dd>
+      <dt>SANs</dt><dd class="mono">{{ c.sans or '—' }}</dd>
+      <dt>Issued</dt><dd>{{ c.issued_at[:19].replace('T',' ') if c.issued_at else '—' }}</dd>
+      <dt>Expires</dt><dd>{{ c.expires_at[:19].replace('T',' ') if c.expires_at else '—' }}
+        {% if c.status=='valid' and c.days_left is not none %}({{ c.days_left }} days){% endif %}</dd>
+      {% if c.revoked_at %}<dt>Revoked</dt><dd>{{ c.revoked_at[:19].replace('T',' ') }}</dd>{% endif %}
+      <dt>Private key</dt><dd>{{ 'on file' if c.key_present else 'not available' }}</dd>
+      {% if fingerprint %}<dt>SHA-256</dt>
+      <dd class="mono" style="font-size:.76rem">{{ fingerprint }}
+        <button class="linkbtn" data-copy-text="{{ fingerprint }}">copy</button></dd>{% endif %}
+    </dl>
+
+    <h2>Expiry notification</h2>
+    <form method="post" action="{{ url_for('set_notify', serial=c.serial) }}" class="notify-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Notify me
+        <input type="number" name="notify_days" min="0" style="width:5rem"
+               value="{{ c.notify_days if c.notify_days is not none else '' }}"
+               placeholder="{{ default_lead }}">
+        days before expiry</label>
+      <button class="btn">Save</button>
+      <div class="muted" style="margin-top:.3rem">
+        {% if c.notify_days is not none %}Custom: {{ c.notify_days }} days.
+        {% else %}Using the default ({{ default_lead }} days). Leave blank to keep the default.{% endif %}
+      </div>
+    </form>
+
+    <h2>Downloads</h2>
+    <div class="downloads">
+      <a class="btn" href="{{ url_for('download', serial=c.serial, what='cert') }}">Certificate</a>
+      <a class="btn" href="{{ url_for('download', serial=c.serial, what='chain') }}">Full chain</a>
+      {% if c.key_present %}
+        <a class="btn" href="{{ url_for('download', serial=c.serial, what='key') }}">Private key</a>
+        <a class="btn" href="{{ url_for('download', serial=c.serial, what='bundle') }}">Key + cert</a>
+      {% endif %}
+    </div>
+
+    <h2>Actions</h2>
+    {% set is_acme = c.source == 'acme' %}
+    {% set can_manage = (not is_acme) or acme_manage %}
+    <div class="actions">
+      {% if c.status in ('valid', 'expired') and not is_acme %}
+      <form method="post" action="{{ url_for('renew', serial=c.serial) }}"
+            onsubmit="return confirm('Renew {{ c.common_name }}? A new certificate is issued{{ ' and this one is revoked' if c.status=='valid' else '' }}.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn">Renew</button>
+      </form>
+      {% endif %}
+      {% if can_manage %}
+        {% if c.status == 'valid' %}
+        <form method="post" action="{{ url_for('revoke', serial=c.serial) }}"
+              onsubmit="return confirm('Revoke {{ c.common_name }} (serial {{ c.serial }})? This cannot be undone.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-danger">Revoke</button>
+        </form>
+        {% endif %}
+        {% if c.archived_at %}
+        <form method="post" action="{{ url_for('unarchive_cert', serial=c.serial) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn">Unarchive</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('archive_cert', serial=c.serial) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn">Archive</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('delete_cert', serial=c.serial) }}"
+              onsubmit="return confirm('Delete {{ c.common_name }} from the app? Its key/cert files move to the revoked-certs folder; this does not revoke the certificate.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-danger">Delete</button>
+        </form>
+      {% endif %}
+    </div>
+    {% if is_acme %}
+      <p class="muted" style="margin-top:.5rem">Issued via ACME — the client holds the private key and
+        renews automatically.{% if not acme_manage %} Management from this UI is disabled in ACME
+        settings.{% endif %}</p>
+    {% elif c.status == 'valid' %}
+    <p class="muted" style="margin-top:.5rem">Deleting only removes it from this app — it does
+      not make the certificate untrusted. Use <strong>Revoke</strong> for that.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Certificate text <button class="linkbtn" data-copy="#cert-text">copy</button></h2>
+    <pre class="cert-text" id="cert-text">{{ text }}</pre>
+  </section>
+</div>
+{% endblock %}

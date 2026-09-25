@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Unlock CA · SuperSimpleCA{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Unlock the CA</h1>
+  {% if autounlock %}
+    <p class="muted">Auto-unlock is enabled. Enter your <strong>web-UI login password</strong> and
+      the CA unlocks itself — you never type the CA passphrase. (The CA is locked again whenever
+      the service restarts or the session times out.)</p>
+    <form method="post" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Login password
+        <input type="password" name="login_password" autofocus autocomplete="current-password">
+      </label>
+      <button class="btn btn-primary">Unlock</button>
+    </form>
+    <details class="muted" style="margin-top:1rem">
+      <summary>Use the CA passphrase instead</summary>
+      <form method="post" class="stack" style="margin-top:.6rem">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>CA passphrase
+          <input type="password" name="passphrase" autocomplete="off">
+        </label>
+        <button class="btn">Unlock with CA passphrase</button>
+      </form>
+    </details>
+  {% else %}
+    <p class="muted">Your CA private key is passphrase-protected. Enter the passphrase to sign,
+      revoke or renew certificates. It is held only in server memory for this session (idle
+      timeout applies) and never written to disk.</p>
+    <form method="post" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>CA passphrase
+        <input type="password" name="passphrase" autofocus autocomplete="off">
+      </label>
+      <button class="btn btn-primary">Unlock</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
