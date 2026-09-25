@@ -22,6 +22,10 @@ mirror (`db/certificates.db`) is added for fast, filterable listing in the UI.
 > **Status: `v0.9.0` (pre-1.0).** Fully usable in a homelab, but interfaces may still shift
 > before 1.0. Feedback and issues welcome.
 
+**New here?** The [wiki](https://github.com/irnutsmurt/super_simple_ca/wiki) is a
+beginner-friendly, step-by-step guide that assumes no prior knowledge of certificates,
+Docker, or the command line.
+
 ---
 
 ## Quick start: CLI
@@ -362,7 +366,6 @@ To rebuild the mirror later (e.g. after CLI changes), use **Settings → Re-sync
 ## Roadmap
 
 - Additional ACME challenge types (e.g. dns-01, wildcard support).
-- A step-by-step wiki aimed at users who are new to PKI.
 
 ## License
 
