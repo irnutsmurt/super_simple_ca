@@ -1,0 +1,23 @@
+services:
+  supersimpleca:
+    image: ghcr.io/irnutsmurt/super_simple_ca:latest
+    # To build from this repo instead of pulling the published image:
+    # build: .
+    container_name: supersimpleca
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      # Required on FIRST RUN ONLY: creates the web-UI admin login.
+      # After the first start you can remove this line (the password is hashed
+      # into /data/config.yaml).
+      SSCA_ADMIN_PASSWORD: "change-me-on-first-run"
+      # Optional:
+      # SSCA_SECURE_COOKIES: "true"                     # when served over HTTPS or behind a proxy
+      # SSCA_WEB_SANS: "ca.example.com 192.168.1.10"    # names/IPs for SSCA-managed TLS
+    volumes:
+      # All state (config, CA keys, certs, db, secrets) lives here. Back it up.
+      - ssca_data:/data
+
+volumes:
+  ssca_data:

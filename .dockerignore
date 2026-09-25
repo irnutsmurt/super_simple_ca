@@ -1,0 +1,29 @@
+# Only webca/ and docker/ are needed to build the image.
+.git
+.github
+.gitignore
+README.md
+LICENSE
+
+# CLI + repair helpers (not part of the web container)
+super_simple_ca.py
+migrate.py
+fixindex.sh
+fixjsonpath.sh
+configs
+test
+
+# Any local operational data / build artifacts that must never enter the image
+ca
+certs
+crl
+db
+logs
+_migration_backup
+docker-compose.yml
+**/__pycache__
+**/*.pyc
+**/.venv
+webca/instance
+webca/config.yaml
+webca/db

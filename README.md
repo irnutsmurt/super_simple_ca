@@ -65,6 +65,45 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 Then browse to `http://<host>:8443/`. A **first-run wizard** walks new installs through creating
 the CA.
 
+## Quick start: Docker
+
+A container image is published to the GitHub Container Registry. All state (config, CA keys,
+certificates, database, secrets) lives on the `/data` volume, so back that volume up.
+
+```bash
+docker run -d --name supersimpleca \
+  -e SSCA_ADMIN_PASSWORD='change-me-on-first-run' \
+  -v ssca_data:/data \
+  -p 8443:8443 \
+  ghcr.io/irnutsmurt/super_simple_ca:latest
+```
+
+Or with Compose (see `docker-compose.yml`):
+
+```bash
+docker compose up -d
+```
+
+Then browse to `http://<host>:8443/` and sign in with the password you set.
+
+**First-run environment variables** (only needed the first time; the app writes them into
+`/data/config.yaml`, after which you can remove them):
+
+| Variable | Purpose |
+|----------|---------|
+| `SSCA_ADMIN_PASSWORD` | **Required on first run.** Sets the web-UI admin password (stored hashed). |
+| `SSCA_SECURE_COOKIES` | `true` when serving over HTTPS or behind a proxy. |
+| `SSCA_WEB_SANS` | Space/comma-separated names/IPs for SSCA-managed TLS, e.g. `ca.example.com 192.168.1.10`. |
+| `SSCA_HOST` / `SSCA_PORT` | Override the listen address/port (default `0.0.0.0:8443`). |
+
+The container runs a single, non-root process (the CA-unlock vault is in memory, so do not scale it
+to multiple replicas). Notes:
+
+- **Importing an existing CA:** mount your existing CA directory as `/data` and build the SQLite
+  mirror once with `docker exec supersimpleca python migrate_to_sqlite.py`.
+- **ACME http-01** is answered by your ACME *client* (e.g. Caddy), not this container, so no extra
+  port is needed here beyond the web/ACME endpoint.
+
 ## Highlights
 
 - **Passphrase-protected CA.** The key can be encrypted; the passphrase is entered in the
@@ -322,9 +361,8 @@ To rebuild the mirror later (e.g. after CLI changes), use **Settings → Re-sync
 
 ## Roadmap
 
-- **Container image.** An official Docker image published to GitHub Container Registry (GHCR) via
-  GitHub Actions, for folks who prefer to run it as a container.
-- Additional ACME challenge types.
+- Additional ACME challenge types (e.g. dns-01, wildcard support).
+- A step-by-step wiki aimed at users who are new to PKI.
 
 ## License
 
